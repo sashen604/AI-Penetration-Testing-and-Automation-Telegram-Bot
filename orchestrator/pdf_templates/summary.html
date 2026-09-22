@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8">{% include "_style.html" %}</head>
+<body>
+    <h1>Bug Bounty Scan Report — Summary</h1>
+    <div class="cover-meta">Target: <strong>{{ job['target'] }}</strong> &nbsp;|&nbsp; Job #{{ job['id'] }} &nbsp;|&nbsp; Generated {{ generated_at }}</div>
+    <div class="cover-box">{{ job['summary'] }}</div>
+
+    <h2>Severity Breakdown</h2>
+    <table>
+        <tr><th>Severity</th><th>Count</th></tr>
+        {% for sev in severity_order %}
+        <tr><td><span class="sev-badge sev-{{ sev }}">{{ sev }}</span></td><td>{{ severity_counts.get(sev, 0) }}</td></tr>
+        {% endfor %}
+    </table>
+
+    {% if job['risk_analysis'] %}
+    <h2>Executive Summary</h2>
+    <div class="exec-summary">{{ job['risk_analysis'] }}</div>
+    {% endif %}
+
+    {% if job['recon_suggestions'] %}
+    <h2>Manual Testing Suggestions</h2>
+    <div class="exec-summary">{{ job['recon_suggestions'] }}</div>
+    {% endif %}
+
+    <h2>Findings Overview</h2>
+    <table>
+        <tr><th>#</th><th>Severity</th><th>Title</th><th>Tool</th><th>Verdict</th><th>AI Conf.</th></tr>
+        {% for f in findings %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td><span class="sev-badge sev-{{ f['severity']|lower }}">{{ f['severity'] }}</span></td>
+            <td>{{ f['title'] }}</td>
+            <td>{{ f['tool'] }}</td>
+            <td>{{ f['verdict'] }}</td>
+            <td>{{ '%.2f' % f['ai_confidence'] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Bug Bounty Dashboard{% endblock %}</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --text:#e6e8eb; --muted:#8b93a1; --accent:#4f8cff;
+          --crit:#ff5c5c; --high:#ff8c42; --med:#f2c94c; --low:#6fcf97; --info:#8b93a1; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:16px 24px; border-bottom:1px solid #262a33; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:18px; margin:0; }
+  header a { color:var(--text); text-decoration:none; }
+  main { max-width:1100px; margin:0 auto; padding:24px; }
+  .panel { background:var(--panel); border:1px solid #262a33; border-radius:10px; padding:20px; margin-bottom:20px; }
+  input, textarea, select { width:100%; padding:10px; background:#0f1115; border:1px solid #2c313c; color:var(--text); border-radius:6px; font-family:inherit; }
+  label { display:block; margin:12px 0 4px; font-size:13px; color:var(--muted); }
+  button { margin-top:16px; padding:10px 18px; background:var(--accent); border:none; border-radius:6px; color:white; font-weight:600; cursor:pointer; }
+  button:hover { opacity:0.9; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid #262a33; font-size:14px; }
+  th { color:var(--muted); font-weight:500; }
+  .status-queued { color:var(--muted); } .status-running { color:var(--accent); }
+  .status-done { color:var(--low); } .status-failed { color:var(--crit); } .status-cancelled { color:var(--muted); }
+  .sev-critical { color:var(--crit); } .sev-high { color:var(--high); }
+  .sev-medium { color:var(--med); } .sev-low { color:var(--low); } .sev-info { color:var(--info); }
+  pre { white-space:pre-wrap; word-break:break-word; background:#0f1115; padding:10px; border-radius:6px; font-size:12px; }
+  .row { display:flex; gap:8px; }
+  .muted { color:var(--muted); font-size:13px; }
+
+  .progress-track { background:#0f1115; border:1px solid #2c313c; border-radius:6px; height:18px; overflow:hidden; margin:6px 0; }
+  .progress-fill { height:100%; background:linear-gradient(90deg, var(--accent), #7ab3ff); transition:width 0.4s ease; display:flex; align-items:center; justify-content:flex-end; }
+  .progress-fill.mini { background:var(--accent); }
+  .progress-label { font-size:11px; color:var(--muted); display:flex; justify-content:space-between; }
+
+  .gauge-row { display:flex; gap:16px; flex-wrap:wrap; }
+  .gauge { flex:1; min-width:140px; }
+  .gauge-track { background:#0f1115; border:1px solid #2c313c; border-radius:5px; height:10px; overflow:hidden; margin-top:4px; }
+  .gauge-fill { height:100%; border-radius:5px; }
+
+  .proc-row { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #1c2028; font-size:12px; }
+  .badge-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+</style>
+</head>
+<body>
+<header><h1><a href="/">Bug Bounty Automation</a></h1></header>
+<main>{% block content %}{% endblock %}</main>
+<script>
+// Shared polling helper: fetches /api/status every 4s and lets each page's
+// own script react via window.onStatusUpdate, without a full page reload.
+(function () {
+  async function poll() {
+    try {
+      const res = await fetch('/api/status');
+      if (res.ok && window.onStatusUpdate) {
+        window.onStatusUpdate(await res.json());
+      }
+    } catch (e) { /* transient network hiccup, just try again next tick */ }
+  }
+  if (window.location.pathname === '/' || window.location.pathname.startsWith('/jobs/')) {
+    poll();
+    setInterval(poll, 4000);
+  }
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

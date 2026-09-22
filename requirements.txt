@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+pydantic
+python-telegram-bot
+ollama
+python-dotenv
+weasyprint
+psutil

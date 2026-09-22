@@ -1,0 +1,51 @@
+<style>
+    @page {
+        size: A4;
+        margin: 2cm 1.6cm;
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #888; }
+        @bottom-left { content: "CONFIDENTIAL"; font-size: 8pt; color: #888; }
+    }
+    body { font-family: "DejaVu Sans", sans-serif; color: #1a1a1a; font-size: 10.5pt; line-height: 1.4; }
+    h1 { font-size: 22pt; margin-bottom: 2pt; }
+    h2 { font-size: 14pt; margin-top: 22pt; margin-bottom: 8pt; border-bottom: 2px solid #333; padding-bottom: 4pt; }
+    h3 { font-size: 11.5pt; margin-bottom: 2pt; }
+    .cover-meta { color: #555; font-size: 10pt; margin-bottom: 4pt; }
+    .cover-box { background: #f4f4f6; border-radius: 8px; padding: 14pt 16pt; margin: 16pt 0; }
+    table { width: 100%; border-collapse: collapse; margin: 8pt 0 16pt; font-size: 9.5pt; }
+    th { background: #2b2f38; color: #fff; text-align: left; padding: 6pt 8pt; }
+    td { padding: 6pt 8pt; border-bottom: 1px solid #ddd; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8f8fa; }
+
+    /* severity badges -- exact scheme requested:
+       info=light green, low=light blue, medium=yellow, high=red, critical=dark blue */
+    .sev-badge { display: inline-block; padding: 2pt 8pt; border-radius: 10pt; font-weight: bold;
+                 font-size: 8.5pt; text-transform: uppercase; }
+    .sev-info     { background: #A5D6A7; color: #1b3a1d; }
+    .sev-low      { background: #90CAF9; color: #0d3b66; }
+    .sev-medium   { background: #FDD835; color: #4a3b00; }
+    .sev-high     { background: #E53935; color: #ffffff; }
+    .sev-critical { background: #1A237E; color: #ffffff; }
+
+    .finding-card { border: 1px solid #ddd; border-left: 6px solid #999; border-radius: 4px;
+                    padding: 10pt 14pt; margin-bottom: 14pt; page-break-inside: avoid; }
+    .finding-card.border-info     { border-left-color: #A5D6A7; }
+    .finding-card.border-low      { border-left-color: #90CAF9; }
+    .finding-card.border-medium   { border-left-color: #FDD835; }
+    .finding-card.border-high     { border-left-color: #E53935; }
+    .finding-card.border-critical { border-left-color: #1A237E; }
+
+    .meta-line { color: #555; font-size: 9pt; margin: 3pt 0; }
+    .finding-card h4 { font-size: 10.5pt; margin: 10pt 0 3pt; color: #2b2f38; }
+    .finding-card p { margin: 2pt 0 6pt; }
+    .field-table { margin: 6pt 0 4pt; font-size: 9pt; }
+    .field-table td { padding: 3pt 8pt; border-bottom: none; }
+    .field-table tr:nth-child(even) td { background: transparent; }
+    .field-label { color: #666; width: 120pt; font-weight: bold; }
+    .steps-list { margin: 2pt 0 6pt; padding-left: 16pt; }
+    .steps-list li { margin-bottom: 3pt; }
+    .ai-block { background: #f4f4f6; border-radius: 4px; padding: 8pt 10pt; margin-top: 6pt;
+                white-space: pre-wrap; font-size: 9pt; font-family: "DejaVu Sans Mono", monospace; }
+    .poc-shot { max-width: 100%; margin-top: 8pt; border: 1px solid #ccc; border-radius: 4px; }
+    .exec-summary { white-space: pre-wrap; background: #f4f4f6; border-radius: 6px; padding: 12pt; }
+    .stat-row { display: flex; gap: 10pt; margin: 10pt 0; }
+</style>

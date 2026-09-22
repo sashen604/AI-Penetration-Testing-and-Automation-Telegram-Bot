@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block content %}
+{% if job %}
+<div class="panel">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <h2 style="margin:0;">Job #{{ job['id'] }} — {{ job['target'] }}</h2>
+    <div class="row">
+      {% if job['status'] in ('running', 'queued') %}
+      <form method="post" action="/jobs/{{ job['id'] }}/cancel"><button type="submit" style="background:var(--crit); margin-top:0;">⏹ Cancel Scan</button></form>
+      {% else %}
+      <form method="post" action="/jobs/{{ job['id'] }}/rescan"><button type="submit" style="background:#2c313c; margin-top:0;">🔁 Re-scan</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div id="job-status-area">
+    {% if job['status'] in ('running', 'queued') %}
+    <div class="progress-label"><span id="job-phase-label">{{ job['progress']['label'] }}</span><span id="job-phase-pct">{{ job['progress']['percent'] }}%</span></div>
+    <div class="progress-track"><div class="progress-fill" id="job-progress-fill" style="width:{{ job['progress']['percent'] }}%;"></div></div>
+    {% else %}
+    <p class="status-{{ job['status'] }}">{{ job['status'] }}</p>
+    {% endif %}
+  </div>
+  <p class="muted">{{ job['summary'] }}</p>
+
+  <div class="row" style="margin-top:12px;">
+    <a href="/jobs/{{ job['id'] }}/report/summary.pdf"><button type="button">📄 Download Summary PDF</button></a>
+    <a href="/jobs/{{ job['id'] }}/report/detailed.pdf"><button type="button" style="background:#2c313c;">📋 Download Detailed PDF (with PoCs)</button></a>
+  </div>
+  <p class="muted" style="margin-top:8px;"><a href="/jobs/{{ job['id'] }}/report" style="color:var(--accent)">View raw report JSON</a></p>
+</div>
+
+{% if job['risk_analysis'] %}
+<div class="panel">
+  <h2>Executive Summary</h2>
+  <pre>{{ job['risk_analysis'] }}</pre>
+</div>
+{% endif %}
+
+{% if job['recon_suggestions'] %}
+<div class="panel">
+  <h2>Manual Testing Suggestions</h2>
+  <p class="muted">Generated from the recon surface, informed by a reference technique corpus — most useful when automated scanners found little or nothing.</p>
+  <pre>{{ job['recon_suggestions'] }}</pre>
+</div>
+{% endif %}
+
+{% if severity_counts %}
+<div class="panel">
+  <h2>Severity Distribution</h2>
+  {% set sev_colors = {'critical': '#1A237E', 'high': 'var(--crit)', 'medium': 'var(--med)', 'low': 'var(--low)', 'info': '#A5D6A7'} %}
+  {% set max_count = severity_counts.values() | max %}
+  {% for sev in ['critical', 'high', 'medium', 'low', 'info'] %}
+  {% if severity_counts.get(sev) %}
+  <div class="row" style="align-items:center; margin-bottom:6px;">
+    <span style="width:70px; text-transform:capitalize;" class="muted">{{ sev }}</span>
+    <div style="flex:1; background:#0f1115; border-radius:4px; overflow:hidden; height:16px;">
+      <div style="width:{{ (severity_counts[sev] / max_count * 100) | round(1) }}%; height:100%; background:{{ sev_colors[sev] }};"></div>
+    </div>
+    <span style="width:30px; text-align:right;">{{ severity_counts[sev] }}</span>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h2 style="margin:0;">Findings ({{ findings|length }})</h2>
+    <div class="row" id="sev-filter">
+      <button type="button" data-filter="all" style="margin-top:0; background:var(--accent);">All</button>
+      <button type="button" data-filter="critical" style="margin-top:0; background:#2c313c;">Critical</button>
+      <button type="button" data-filter="high" style="margin-top:0; background:#2c313c;">High</button>
+      <button type="button" data-filter="medium" style="margin-top:0; background:#2c313c;">Medium</button>
+      <button type="button" data-filter="low" style="margin-top:0; background:#2c313c;">Low</button>
+      <button type="button" data-filter="info" style="margin-top:0; background:#2c313c;">Info</button>
+    </div>
+  </div>
+  {% for f in findings %}
+  <div class="panel finding-row" data-severity="{{ f['severity']|lower }}" style="background:#12151b;">
+    <div class="row" style="justify-content:space-between;">
+      <strong class="sev-{{ f['severity'] }}">[{{ f['severity']|upper }}] {{ f['title'] }}</strong>
+      <span class="muted">conf {{ '%.2f' % f['ai_confidence'] }}</span>
+    </div>
+    <p class="muted">ID #{{ f['id'] }} — {{ f['tool'] }} / {{ f['kind'] }} — {{ f['matched_url'] }}</p>
+
+    {% if f['description'] %}<p><strong>Description:</strong> {{ f['description'] }}</p>{% endif %}
+    {% if f['risk'] %}<p><strong>Risk:</strong> {{ f['risk'] }}</p>{% endif %}
+    {% if f['reasoning'] %}<p class="muted"><strong>Reasoning:</strong> {{ f['reasoning'] }}</p>{% endif %}
+
+    {% if manual_steps.get(f['id']) %}
+    <p><strong>Manual Testing Procedure:</strong></p>
+    <ol>{% for step in manual_steps[f['id']] %}<li>{{ step }}</li>{% endfor %}</ol>
+    {% endif %}
+
+    {% if screenshot_urls[f['id']] %}
+    <p class="muted">PoC screenshot:</p>
+    <img src="{{ screenshot_urls[f['id']] }}" style="max-width:100%; border-radius:6px; border:1px solid #262a33;">
+    {% endif %}
+
+    {% if f['remediation'] and f['remediation'] != 'N/A' %}<p><strong>Remediation:</strong> {{ f['remediation'] }}</p>{% endif %}
+
+    <p class="muted">Verdict: <strong>{{ f['verdict'] }}</strong></p>
+    <form method="post" action="/findings/{{ f['id'] }}/verdict" class="row">
+      <input type="hidden" name="job_id" value="{{ job['id'] }}">
+      <button name="verdict" value="true_positive" style="background:var(--crit);">Mark True Positive</button>
+      <button name="verdict" value="false_positive" style="background:#2c313c;">Mark False Positive</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="muted">No findings yet.</p>
+  {% endfor %}
+</div>
+
+<div class="panel" id="chat">
+  <h2>Ask AI about this scan</h2>
+  <p class="muted">Answers are grounded only in this job's findings — the model won't guess beyond what was scanned.</p>
+  {% for m in chat_messages %}
+  <div class="panel" style="background:{% if m['role']=='user' %}#12151b{% else %}#151a24{% endif %}; margin-bottom:8px;">
+    <div class="muted" style="font-size:11px; margin-bottom:4px;">{% if m['role']=='user' %}You{% else %}AI{% endif %}</div>
+    <pre style="margin:0;">{{ m['content'] }}</pre>
+  </div>
+  {% else %}
+  <p class="muted">No questions yet. Try: "which findings should I check first?" or "explain the missing headers finding".</p>
+  {% endfor %}
+  <form method="post" action="/jobs/{{ job['id'] }}/chat#chat">
+    <label>Your question (this may take ~30-60s on local hardware)</label>
+    <input name="question" placeholder="e.g. which findings are most likely real?" required>
+    <button type="submit">Ask</button>
+  </form>
+</div>
+{% else %}
+<p>Job not found.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const THIS_JOB_ID = {{ job['id'] if job else 'null' }};
+const THIS_JOB_STATUS = "{{ job['status'] if job else '' }}";
+
+// Severity filter for the findings list -- pure client-side, no reload.
+document.getElementById('sev-filter')?.addEventListener('click', function (e) {
+  const btn = e.target.closest('button[data-filter]');
+  if (!btn) return;
+  const filter = btn.dataset.filter;
+  document.querySelectorAll('#sev-filter button').forEach(b => b.style.background = '#2c313c');
+  btn.style.background = 'var(--accent)';
+  document.querySelectorAll('.finding-row').forEach(row => {
+    row.style.display = (filter === 'all' || row.dataset.severity === filter) ? '' : 'none';
+  });
+});
+
+// Live progress bar for this job while it's running/queued. Reuses the
+// shared /api/status poller's data when possible, but this job's own
+// endpoint is more precise (covers jobs not in the "active" list edge case).
+if (THIS_JOB_ID && (THIS_JOB_STATUS === 'running' || THIS_JOB_STATUS === 'queued')) {
+  async function pollJob() {
+    try {
+      const res = await fetch('/api/jobs/' + THIS_JOB_ID + '/status');
+      if (!res.ok) return;
+      const job = await res.json();
+      if (job.status !== 'running' && job.status !== 'queued') {
+        window.location.reload();  // scan finished -- reload to show findings/report
+        return;
+      }
+      const fill = document.getElementById('job-progress-fill');
+      const label = document.getElementById('job-phase-label');
+      const pct = document.getElementById('job-phase-pct');
+      if (fill) fill.style.width = job.progress.percent + '%';
+      if (label) label.textContent = job.progress.label;
+      if (pct) pct.textContent = job.progress.percent + '%';
+    } catch (e) { /* transient, retry next tick */ }
+  }
+  pollJob();
+  setInterval(pollJob, 3000);
+}
+</script>
+{% endblock %}

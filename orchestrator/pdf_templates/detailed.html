@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8">{% include "_style.html" %}</head>
+<body>
+    <h1>Bug Bounty Scan Report — Detailed</h1>
+    <div class="cover-meta">Target: <strong>{{ job['target'] }}</strong> &nbsp;|&nbsp; Job #{{ job['id'] }} &nbsp;|&nbsp; Generated {{ generated_at }}</div>
+    <div class="cover-box">{{ job['summary'] }}</div>
+
+    <h2>Severity Breakdown</h2>
+    <table>
+        <tr><th>Severity</th><th>Count</th></tr>
+        {% for sev in severity_order %}
+        <tr><td><span class="sev-badge sev-{{ sev }}">{{ sev }}</span></td><td>{{ severity_counts.get(sev, 0) }}</td></tr>
+        {% endfor %}
+    </table>
+
+    {% if job['risk_analysis'] %}
+    <h2>Executive Summary</h2>
+    <div class="exec-summary">{{ job['risk_analysis'] }}</div>
+    {% endif %}
+
+    {% if job['recon_suggestions'] %}
+    <h2>Manual Testing Suggestions</h2>
+    <div class="exec-summary">{{ job['recon_suggestions'] }}</div>
+    {% endif %}
+
+    <h2>Findings Overview</h2>
+    <table>
+        <tr><th>#</th><th>Severity</th><th>Title</th><th>Tool</th><th>Verdict</th><th>AI Conf.</th></tr>
+        {% for f in findings %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td><span class="sev-badge sev-{{ f['severity']|lower }}">{{ f['severity'] }}</span></td>
+            <td>{{ f['title'] }}</td>
+            <td>{{ f['tool'] }}</td>
+            <td>{{ f['verdict'] }}</td>
+            <td>{{ '%.2f' % f['ai_confidence'] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>Detailed Findings</h2>
+    {% for f in findings %}
+    <div class="finding-card border-{{ f['severity']|lower }}">
+        <h3><span class="sev-badge sev-{{ f['severity']|lower }}">{{ f['severity'] }}</span> &nbsp; {{ f['title'] }}</h3>
+        <table class="field-table">
+            <tr><td class="field-label">Finding ID</td><td>#{{ f['id'] }}</td></tr>
+            <tr><td class="field-label">Severity</td><td><span class="sev-badge sev-{{ f['severity']|lower }}">{{ f['severity'] }}</span></td></tr>
+            <tr><td class="field-label">Tool / Type</td><td>{{ f['tool'] }} ({{ f['kind'] }})</td></tr>
+            <tr><td class="field-label">Affected URL</td><td>{{ f['matched_url'] }}</td></tr>
+            <tr><td class="field-label">Verdict</td><td><strong>{{ f['verdict'] }}</strong> (AI confidence: {{ '%.2f' % f['ai_confidence'] }})</td></tr>
+        </table>
+
+        <h4>Description</h4>
+        <p>{{ f['description'] or f['ai_summary'] }}</p>
+
+        {% if f['risk'] %}
+        <h4>Risk</h4>
+        <p>{{ f['risk'] }}</p>
+        {% endif %}
+
+        {% if f['reasoning'] %}
+        <h4>AI Reasoning</h4>
+        <p class="meta-line">{{ f['reasoning'] }}</p>
+        {% endif %}
+
+        {% if manual_steps.get(f['id']) %}
+        <h4>Manual Testing Procedure</h4>
+        <ol class="steps-list">
+            {% for step in manual_steps[f['id']] %}
+            <li>{{ step }}</li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+
+        {% if screenshot_paths.get(f['id']) %}
+        <h4>Proof of Concept</h4>
+        <img class="poc-shot" src="file://{{ screenshot_paths[f['id']] }}">
+        {% endif %}
+
+        {% if f['remediation'] and f['remediation'] != 'N/A' %}
+        <h4>Remediation</h4>
+        <p>{{ f['remediation'] }}</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</body>
+</html>

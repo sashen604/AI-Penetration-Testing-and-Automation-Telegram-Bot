@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h2 style="margin:0;">Scan Status</h2>
+    <div id="ai-badge">
+      {% if sys_status['ollama_model']['online'] %}
+      <span class="muted">🟢 AI: <strong style="color:var(--low)">Online</strong> — {{ sys_status['ollama_model']['target_model'] }}</span>
+      {% else %}
+      <span class="muted">🔴 AI: <strong style="color:var(--crit)">Offline</strong> — is `ollama serve` running?</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="row" style="margin-top:12px;">
+    <a href="/?status=running" style="flex:1; text-decoration:none;">
+      <div class="panel" style="background:#12151b; text-align:center; margin:0; {% if active_filter=='running' %}border-color:var(--accent);{% endif %}">
+        <div style="font-size:28px; color:var(--accent);">{{ (status_counts.get('running', 0)) + (status_counts.get('queued', 0)) }}</div>
+        <div class="muted">Ongoing</div>
+      </div>
+    </a>
+    <a href="/?status=done" style="flex:1; text-decoration:none;">
+      <div class="panel" style="background:#12151b; text-align:center; margin:0; {% if active_filter=='done' %}border-color:var(--low);{% endif %}">
+        <div style="font-size:28px; color:var(--low);">{{ status_counts.get('done', 0) }}</div>
+        <div class="muted">Passed</div>
+      </div>
+    </a>
+    <a href="/?status=failed" style="flex:1; text-decoration:none;">
+      <div class="panel" style="background:#12151b; text-align:center; margin:0; {% if active_filter=='failed' %}border-color:var(--crit);{% endif %}">
+        <div style="font-size:28px; color:var(--crit);">{{ status_counts.get('failed', 0) }}</div>
+        <div class="muted">Failed</div>
+      </div>
+    </a>
+    <a href="/" style="flex:1; text-decoration:none;">
+      <div class="panel" style="background:#12151b; text-align:center; margin:0; {% if not active_filter %}border-color:var(--accent);{% endif %}">
+        <div style="font-size:28px;">{{ status_counts.values() | sum }}</div>
+        <div class="muted">All</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>System & AI Monitor</h2>
+  <div class="gauge-row" id="gauge-row">
+    <div class="gauge">
+      <div class="row" style="justify-content:space-between;"><span class="muted">CPU</span><span id="g-cpu-val">{{ sys_status['system']['cpu_percent'] }}%</span></div>
+      <div class="gauge-track"><div class="gauge-fill" id="g-cpu-fill" style="width:{{ sys_status['system']['cpu_percent'] }}%; background:var(--accent);"></div></div>
+    </div>
+    <div class="gauge">
+      <div class="row" style="justify-content:space-between;"><span class="muted">RAM</span><span id="g-mem-val">{{ sys_status['system']['mem_used_gb'] }} / {{ sys_status['system']['mem_total_gb'] }} GB</span></div>
+      <div class="gauge-track"><div class="gauge-fill" id="g-mem-fill" style="width:{{ sys_status['system']['mem_percent'] }}%; background:var(--med);"></div></div>
+    </div>
+    <div class="gauge">
+      <div class="row" style="justify-content:space-between;"><span class="muted">Ollama RAM</span><span id="g-ollama-mem-val">{{ sys_status['ollama_process']['mem_gb'] }} GB</span></div>
+      <div class="gauge-track"><div class="gauge-fill" id="g-ollama-mem-fill" style="width:{{ (sys_status['ollama_process']['mem_gb'] / sys_status['system']['mem_total_gb'] * 100) | round(1) }}%; background:var(--low);"></div></div>
+    </div>
+    <div class="gauge">
+      <div class="row" style="justify-content:space-between;"><span class="muted">Ollama CPU</span><span id="g-ollama-cpu-val">{{ sys_status['ollama_process']['cpu_percent'] }}%</span></div>
+      <div class="gauge-track"><div class="gauge-fill" id="g-ollama-cpu-fill" style="width:{{ sys_status['ollama_process']['cpu_percent'] }}%; background:var(--low);"></div></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px; gap:24px;">
+    <div style="flex:1;">
+      <p class="muted" style="margin-bottom:4px;">Loaded AI model</p>
+      <div id="model-info">
+        {% if sys_status['ollama_model']['loaded_models'] %}
+          {% for m in sys_status['ollama_model']['loaded_models'] %}
+          <div>{{ m['name'] }} — {{ m['size_gb'] }} GB — {{ 'GPU' if m['using_gpu'] else 'CPU' }} — unloads at {{ m['expires_at'] }}</div>
+          {% endfor %}
+        {% else %}
+          <div class="muted">No model currently loaded in memory (idle).</div>
+        {% endif %}
+      </div>
+    </div>
+    <div style="flex:1;">
+      <p class="muted" style="margin-bottom:4px;">Running scan processes</p>
+      <div id="scan-procs">
+        {% if sys_status['scan_processes'] %}
+          {% for p in sys_status['scan_processes'] %}
+          <div class="proc-row"><span><span class="badge-dot" style="background:var(--accent);"></span>{{ p['name'] }} (pid {{ p['pid'] }})</span><span class="muted">{{ p['cpu_percent'] }}% CPU, {{ p['mem_mb'] }} MB</span></div>
+          {% endfor %}
+        {% else %}
+          <div class="muted">No scan tools currently running.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>New Scan</h2>
+  <p class="muted">Only run this against targets you are authorized to test (bug bounty program scope or signed pentest engagement).</p>
+  <form method="post" action="/scan">
+    <label>Target root domain</label>
+    <input name="domain" placeholder="example.com" required>
+    <label>Scope (one rule per line — *.example.com to include, !shop.example.com to exclude)</label>
+    <textarea name="scope" rows="5" placeholder="*.example.com&#10;!staging.example.com"></textarea>
+    <button type="submit">Start Scan</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>{% if active_filter %}Jobs — {{ active_filter }}{% else %}Recent Jobs{% endif %}</h2>
+  <table>
+    <tr><th>ID</th><th>Target</th><th>Status / Progress</th><th>Created</th><th>Summary</th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ j['id'] }}" style="color:var(--accent)">#{{ j['id'] }}</a></td>
+      <td>{{ j['target'] }}</td>
+      <td style="min-width:160px;">
+        {% if j['status'] in ('running', 'queued') %}
+        <div class="progress-label"><span>{{ j['progress']['label'] }}</span><span>{{ j['progress']['percent'] }}%</span></div>
+        <div class="progress-track"><div class="progress-fill mini" style="width:{{ j['progress']['percent'] }}%;"></div></div>
+        {% else %}
+        <span class="status-{{ j['status'] }}">{{ j['status'] }}</span>
+        {% endif %}
+      </td>
+      <td class="muted">{{ j['created_at'] }}</td>
+      <td class="muted">{{ j['summary'] }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">No jobs yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.onStatusUpdate = function (data) {
+  const s = data.system, op = data.ollama_process, om = data.ollama_model;
+  document.getElementById('g-cpu-val').textContent = s.cpu_percent + '%';
+  document.getElementById('g-cpu-fill').style.width = s.cpu_percent + '%';
+  document.getElementById('g-mem-val').textContent = s.mem_used_gb + ' / ' + s.mem_total_gb + ' GB';
+  document.getElementById('g-mem-fill').style.width = s.mem_percent + '%';
+  document.getElementById('g-ollama-mem-val').textContent = op.mem_gb + ' GB';
+  document.getElementById('g-ollama-mem-fill').style.width = Math.min(100, (op.mem_gb / s.mem_total_gb * 100)) + '%';
+  document.getElementById('g-ollama-cpu-val').textContent = op.cpu_percent + '%';
+  document.getElementById('g-ollama-cpu-fill').style.width = Math.min(100, op.cpu_percent) + '%';
+
+  const badge = document.getElementById('ai-badge');
+  badge.innerHTML = om.online
+    ? '<span class="muted">🟢 AI: <strong style="color:var(--low)">Online</strong> — ' + om.target_model + '</span>'
+    : '<span class="muted">🔴 AI: <strong style="color:var(--crit)">Offline</strong></span>';
+
+  const procDiv = document.getElementById('scan-procs');
+  procDiv.innerHTML = data.scan_processes.length
+    ? data.scan_processes.map(p => '<div class="proc-row"><span><span class="badge-dot" style="background:var(--accent);"></span>' + p.name + ' (pid ' + p.pid + ')</span><span class="muted">' + p.cpu_percent + '% CPU, ' + p.mem_mb + ' MB</span></div>').join('')
+    : '<div class="muted">No scan tools currently running.</div>';
+
+  // If any job is actively running/queued, refresh the page so its row
+  // picks up new progress -- cheap since polling is only every 4s.
+  if (data.active_jobs && data.active_jobs.length > 0) {
+    const bar = document.querySelector('.progress-fill.mini');
+    if (bar) {
+      const job = data.active_jobs[0];
+      bar.style.width = job.progress.percent + '%';
+      const label = bar.parentElement.previousElementSibling;
+      if (label) label.innerHTML = '<span>' + job.progress.label + '</span><span>' + job.progress.percent + '%</span>';
+    }
+  }
+};
+</script>
+{% endblock %}
