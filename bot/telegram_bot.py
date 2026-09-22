@@ -27,6 +27,7 @@ import logging
 
 from dotenv import load_dotenv
 from telegram import BotCommand, Update
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 load_dotenv()
@@ -68,9 +69,26 @@ def _authorized(update: Update) -> bool:
     return update.effective_user and update.effective_user.id in TELEGRAM_ALLOWED_USER_IDS
 
 
+async def _safe_reply(update: Update, text: str, retries: int = 3, **kwargs):
+    """This environment has shown recurring transient network failures
+    (TimedOut/NetworkError) specifically on the outbound reply, after the
+    inbound command was already received -- which looks like total
+    silence to the operator even though the bot is alive and working.
+    Retry a few times with backoff before giving up."""
+    for attempt in range(retries):
+        try:
+            return await update.message.reply_text(text, **kwargs)
+        except (TimedOut, NetworkError) as e:
+            if attempt == retries - 1:
+                log.error("reply failed after %d attempts: %s", retries, e)
+                raise
+            log.warning("reply attempt %d/%d failed (%s), retrying...", attempt + 1, retries, e)
+            await asyncio.sleep(2 * (attempt + 1))
+
+
 async def _reply_chunked(update: Update, text: str):
     for i in range(0, len(text), TELEGRAM_MAX_LEN):
-        await update.message.reply_text(text[i:i + TELEGRAM_MAX_LEN])
+        await _safe_reply(update, text[i:i + TELEGRAM_MAX_LEN])
 
 
 async def _run_background_scan(update: Update, label: str, coro):
@@ -79,11 +97,14 @@ async def _run_background_scan(update: Update, label: str, coro):
         await _reply_chunked(update, f"✅ {label} done:\n\n{result}")
     except Exception as e:
         log.exception("%s failed", label)
-        await update.message.reply_text(f"❌ {label} failed: {e}")
+        try:
+            await _safe_reply(update, f"❌ {label} failed: {e}")
+        except (TimedOut, NetworkError):
+            pass  # already logged above; don't let a reply failure mask the real error
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    await _safe_reply(update, 
         "🛡️ *Bug Bounty Automation*\n"
         "_Recon → Scan → AI Triage → PoC → Report_\n\n"
         "I run the real recon/scan toolchain (subfinder, httpx, katana, "
@@ -112,21 +133,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def scope_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
-        return await update.message.reply_text("Not authorized.")
+        return await _safe_reply(update, "Not authorized.")
     text = update.message.text.partition(" ")[2]
     _pending_scope[update.effective_user.id] = text
-    await update.message.reply_text(f"Scope set for your next /scan:\n{text or '(none)'}")
+    await _safe_reply(update, f"Scope set for your next /scan:\n{text or '(none)'}")
 
 
 async def scan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
-        return await update.message.reply_text("Not authorized.")
+        return await _safe_reply(update, "Not authorized.")
     if not context.args:
-        return await update.message.reply_text("Usage: /scan example.com")
+        return await _safe_reply(update, "Usage: /scan example.com")
     domain = context.args[0].strip()
     scope_text = _pending_scope.pop(update.effective_user.id, "")
     job_id = await submit_job(domain, scope_text)
-    await update.message.reply_text(
+    await _safe_reply(update, 
         f"Queued job #{job_id} for {domain}. I'll message you when it's done.\n"
         f"Check anytime with /status {job_id}"
     )
@@ -135,12 +156,12 @@ async def scan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def subenum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
-        return await update.message.reply_text("Not authorized.")
+        return await _safe_reply(update, "Not authorized.")
     if not context.args:
-        return await update.message.reply_text("Usage: /subenum example.com")
+        return await _safe_reply(update, "Usage: /subenum example.com")
     domain = context.args[0].strip()
     scope_text = _pending_scope.pop(update.effective_user.id, "")
-    await update.message.reply_text(f"🔎 Enumerating subdomains for {domain}...")
+    await _safe_reply(update, f"🔎 Enumerating subdomains for {domain}...")
     context.application.create_task(
         _run_background_scan(update, f"Subdomain enum for {domain}", run_subdomain_enum(domain, scope_text))
     )
@@ -148,12 +169,12 @@ async def subenum_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def portscan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
-        return await update.message.reply_text("Not authorized.")
+        return await _safe_reply(update, "Not authorized.")
     if not context.args:
-        return await update.message.reply_text("Usage: /portscan example.com")
+        return await _safe_reply(update, "Usage: /portscan example.com")
     host = context.args[0].strip()
     scope_text = _pending_scope.pop(update.effective_user.id, "")
-    await update.message.reply_text(f"🔌 Port scanning {host} (naabu+nmap, this takes a bit)...")
+    await _safe_reply(update, f"🔌 Port scanning {host} (naabu+nmap, this takes a bit)...")
     context.application.create_task(
         _run_background_scan(update, f"Port scan for {host}", run_port_scan_standalone(host, scope_text))
     )
@@ -161,11 +182,11 @@ async def portscan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def webscan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
-        return await update.message.reply_text("Not authorized.")
+        return await _safe_reply(update, "Not authorized.")
     if not context.args:
-        return await update.message.reply_text("Usage: /webscan https://example.com/page")
+        return await _safe_reply(update, "Usage: /webscan https://example.com/page")
     url = context.args[0].strip()
-    await update.message.reply_text(f"🩻 Running nuclei + AI triage on {url}...")
+    await _safe_reply(update, f"🩻 Running nuclei + AI triage on {url}...")
     context.application.create_task(
         _run_background_scan(update, f"Web vuln scan for {url}", run_web_vuln_scan(url))
     )
@@ -173,11 +194,11 @@ async def webscan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def dirscan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _authorized(update):
-        return await update.message.reply_text("Not authorized.")
+        return await _safe_reply(update, "Not authorized.")
     if not context.args:
-        return await update.message.reply_text("Usage: /dirscan https://example.com")
+        return await _safe_reply(update, "Usage: /dirscan https://example.com")
     url = context.args[0].strip()
-    await update.message.reply_text(f"📂 Brute-forcing directories on {url}...")
+    await _safe_reply(update, f"📂 Brute-forcing directories on {url}...")
     context.application.create_task(
         _run_background_scan(update, f"Dir scan for {url}", run_dir_scan_standalone(url))
     )
@@ -188,7 +209,7 @@ async def _watch_job(update: Update, job_id: int, interval: int = 15):
         await asyncio.sleep(interval)
         job = db.get_job(job_id)
         if job and job["status"] in ("done", "failed"):
-            await update.message.reply_text(
+            await _safe_reply(update, 
                 f"Job #{job_id} ({job['target']}) {job['status']}.\n{job['summary']}"
             )
             return
@@ -196,29 +217,29 @@ async def _watch_job(update: Update, job_id: int, interval: int = 15):
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        return await update.message.reply_text("Usage: /status <job_id>")
+        return await _safe_reply(update, "Usage: /status <job_id>")
     job = db.get_job(int(context.args[0]))
     if not job:
-        return await update.message.reply_text("Job not found.")
-    await update.message.reply_text(f"#{job['id']} {job['target']} — {job['status']}\n{job['summary']}")
+        return await _safe_reply(update, "Job not found.")
+    await _safe_reply(update, f"#{job['id']} {job['target']} — {job['status']}\n{job['summary']}")
 
 
 async def jobs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     jobs = db.list_jobs(limit=10)
     if not jobs:
-        return await update.message.reply_text("No jobs yet.")
+        return await _safe_reply(update, "No jobs yet.")
     lines = [f"#{j['id']} {j['status']:<8} {j['target']}" for j in jobs]
-    await update.message.reply_text("\n".join(lines))
+    await _safe_reply(update, "\n".join(lines))
 
 
 async def findings_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        return await update.message.reply_text("Usage: /findings <job_id>")
+        return await _safe_reply(update, "Usage: /findings <job_id>")
     findings = db.list_findings(job_id=int(context.args[0]))
     if not findings:
-        return await update.message.reply_text("No findings.")
+        return await _safe_reply(update, "No findings.")
     lines = [f"[{f['severity']}] {f['title']} ({f['verdict']}) -> {f['matched_url']}" for f in findings[:20]]
-    await update.message.reply_text("\n".join(lines))
+    await _safe_reply(update, "\n".join(lines))
 
 
 async def _post_init(app: Application):
@@ -226,11 +247,37 @@ async def _post_init(app: Application):
     log.info("Registered %d commands with Telegram (shown on '/' menu)", len(COMMANDS))
 
 
+async def _on_error(update, context: ContextTypes.DEFAULT_TYPE):
+    """Replaces PTB's default 'No error handlers are registered' log spam
+    with something actionable, and tries to let the operator know rather
+    than failing silently from their point of view."""
+    log.error("update %s caused error: %s", update, context.error)
+    if isinstance(update, Update) and update.message:
+        try:
+            await _safe_reply(update, f"⚠️ Something went wrong handling that: {context.error}", retries=1)
+        except (TimedOut, NetworkError):
+            pass
+
+
 def main():
     if not TELEGRAM_BOT_TOKEN:
         raise SystemExit("Set TELEGRAM_BOT_TOKEN in bugbounty/.env first (see .env.example)")
     db.init_db()
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
+    app = (
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .post_init(_post_init)
+        # This environment has shown recurring multi-second network latency
+        # to Telegram's API; PTB's defaults (~5s) are too tight for that and
+        # were causing replies to silently fail after the command was
+        # already received. Give real headroom.
+        .connect_timeout(20)
+        .read_timeout(20)
+        .write_timeout(20)
+        .pool_timeout(20)
+        .build()
+    )
+    app.add_error_handler(_on_error)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("scope", scope_cmd))
     app.add_handler(CommandHandler("scan", scan_cmd))

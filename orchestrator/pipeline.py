@@ -93,16 +93,26 @@ async def run_httpx(hosts: list[str], target_label: str) -> list[dict]:
     return results
 
 
-async def run_nuclei(urls: list[str], target_label: str) -> list[dict]:
+async def run_nuclei(urls: list[str], target_label: str) -> tuple[list[dict], bool]:
+    """Returns (findings, timed_out). timed_out=True means the scan was cut
+    off mid-run -- 0 findings in that case means "incomplete", not "clean"."""
     if not urls:
-        return []
+        return [], False
     cmd = [
         TOOL_PATHS["nuclei"], "-silent", "-jsonl",
         "-severity", NUCLEI_SEVERITY,
         "-rate-limit", str(DEFAULT_RATE_LIMIT),
     ]
-    out, err, rc = await _run(cmd, stdin_data="\n".join(urls))
+    # nuclei runs its full template set per URL -- against more than a
+    # handful of URLs this routinely takes longer than the generic 900s
+    # tool timeout (observed: silently killed mid-scan, returning 0
+    # findings that looked like "clean target" but were actually "timed
+    # out"). Give it real headroom.
+    out, err, rc = await _run(cmd, stdin_data="\n".join(urls), timeout=1800)
     raw_path(target_label, "nuclei.jsonl").write_text(out)
+    timed_out = rc == -1 and "timed out" in err
+    if timed_out:
+        log.warning("nuclei: timed out against %d urls -- results are incomplete, not necessarily clean", len(urls))
     findings = []
     for line in out.splitlines():
         line = line.strip()
@@ -112,8 +122,8 @@ async def run_nuclei(urls: list[str], target_label: str) -> list[dict]:
             findings.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-    log.info("nuclei: %d findings", len(findings))
-    return findings
+    log.info("nuclei: %d findings%s", len(findings), " (timed out, incomplete)" if timed_out else "")
+    return findings, timed_out
 
 
 async def run_gobuster(live_urls: list[str], target_label: str) -> list[str]:
@@ -290,9 +300,10 @@ async def run_web_vuln_scan(url: str) -> str:
     target_label = urlparse(url).netloc or url
     target_dir(target_label)
 
-    findings = await run_nuclei([url], target_label)
+    findings, timed_out = await run_nuclei([url], target_label)
     if not findings:
-        return f"nuclei scan of {url}: no findings."
+        note = " (scan timed out -- incomplete, not necessarily clean)" if timed_out else ""
+        return f"nuclei scan of {url}: no findings{note}."
 
     lines = [f"nuclei scan of {url}: {len(findings)} findings.\n"]
     for f in findings[:15]:
@@ -353,7 +364,7 @@ async def run_pipeline(job_id: int, root_domain: str, scope_text: str = "") -> d
         # panels, etc.)
         db.set_phase(job_id, "nuclei_scan")
         nuclei_targets = list(dict.fromkeys(live_urls + gobuster_paths))
-        nuclei_findings = await run_nuclei(nuclei_targets, target_label)
+        nuclei_findings, nuclei_timed_out = await run_nuclei(nuclei_targets, target_label)
         db.set_phase(job_id, "dalfox_scan")
         dalfox_findings = await run_dalfox(crawled, target_label)
 
@@ -384,10 +395,11 @@ async def run_pipeline(job_id: int, root_domain: str, scope_text: str = "") -> d
             stored += 1
             db.set_phase(job_id, "triaging", stored, total_to_triage)
 
+        nuclei_note = " (TIMED OUT -- incomplete, not a clean result)" if nuclei_timed_out else ""
         summary = (
             f"{len(subs)} in-scope hosts, {len(live)} live, "
             f"{len(gobuster_paths)} gobuster paths, "
-            f"{len(nuclei_findings)} nuclei hits, {len(dalfox_findings)} dalfox hits, "
+            f"{len(nuclei_findings)} nuclei hits{nuclei_note}, {len(dalfox_findings)} dalfox hits, "
             f"{stored} findings stored."
         )
 

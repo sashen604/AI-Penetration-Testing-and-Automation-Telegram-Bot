@@ -4,7 +4,7 @@ import logging
 import ollama
 import psutil
 
-from orchestrator.config import OLLAMA_HOST, OLLAMA_MODEL
+from orchestrator.config import OLLAMA_HEALTHCHECK_TIMEOUT, OLLAMA_HOST, OLLAMA_MODEL
 
 log = logging.getLogger("system_status")
 
@@ -64,7 +64,7 @@ def get_ollama_process_stats() -> dict:
 
 def get_ollama_model_status() -> dict:
     try:
-        client = ollama.Client(host=OLLAMA_HOST)
+        client = ollama.Client(host=OLLAMA_HOST, timeout=OLLAMA_HEALTHCHECK_TIMEOUT)
         loaded = client.ps()
         models = []
         for m in loaded.models:

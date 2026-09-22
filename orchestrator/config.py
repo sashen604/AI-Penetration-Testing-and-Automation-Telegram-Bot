@@ -40,6 +40,12 @@ GOBUSTER_MAX_HOSTS = int(os.environ.get("GOBUSTER_MAX_HOSTS", "5"))
 #   ollama pull llama3.2:3b
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+# A stuck Ollama/llama-server request (observed: a hang that ran for 10+
+# hours, exhausted system RAM via swap, and took the web app down with it)
+# must never block forever. These bound every call; a genuine timeout is
+# always caught and handled as a normal failure, never left to hang.
+OLLAMA_REQUEST_TIMEOUT = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT", "180"))
+OLLAMA_HEALTHCHECK_TIMEOUT = int(os.environ.get("OLLAMA_HEALTHCHECK_TIMEOUT", "10"))
 
 # Telegram bot token, set via environment or .env file. Never commit this.
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")

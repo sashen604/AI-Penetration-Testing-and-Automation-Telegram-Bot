@@ -1,12 +1,12 @@
 """Local AI (Ollama) health check for the dashboard."""
 import ollama
 
-from orchestrator.config import OLLAMA_HOST, OLLAMA_MODEL
+from orchestrator.config import OLLAMA_HEALTHCHECK_TIMEOUT, OLLAMA_HOST, OLLAMA_MODEL
 
 
 def check_ollama_status() -> dict:
     try:
-        client = ollama.Client(host=OLLAMA_HOST)
+        client = ollama.Client(host=OLLAMA_HOST, timeout=OLLAMA_HEALTHCHECK_TIMEOUT)
         resp = client.list()
         models = [m.model for m in resp.models]
         model_loaded = any(OLLAMA_MODEL in m for m in models)

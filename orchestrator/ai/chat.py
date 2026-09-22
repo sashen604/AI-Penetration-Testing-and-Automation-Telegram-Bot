@@ -3,9 +3,9 @@ import ollama
 
 from orchestrator import db
 from orchestrator.ai.persona import CHAT_SYSTEM_PROMPT, build_chat_context
-from orchestrator.config import OLLAMA_HOST, OLLAMA_MODEL
+from orchestrator.config import OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_REQUEST_TIMEOUT
 
-_client = ollama.Client(host=OLLAMA_HOST)
+_client = ollama.Client(host=OLLAMA_HOST, timeout=OLLAMA_REQUEST_TIMEOUT)
 
 MAX_HISTORY_TURNS = 6  # keep the prompt from growing unbounded over a long chat
 

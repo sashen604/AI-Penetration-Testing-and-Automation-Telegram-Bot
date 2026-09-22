@@ -14,9 +14,9 @@ from orchestrator.ai.persona import (
     build_triage_prompt,
     match_reference_categories,
 )
-from orchestrator.config import OLLAMA_HOST, OLLAMA_MODEL
+from orchestrator.config import OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_REQUEST_TIMEOUT
 
-_client = ollama.Client(host=OLLAMA_HOST)
+_client = ollama.Client(host=OLLAMA_HOST, timeout=OLLAMA_REQUEST_TIMEOUT)
 
 _FALLBACK_FIELDS = {
     "description": "",
